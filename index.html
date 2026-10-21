@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>냥냥 머지: 길냥이에서 냥신까지!</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js Physics Engine -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            background: linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%);
+            font-family: 'Apple SD Gothic Neo', sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between h-screen w-screen p-2 max-w-md mx-auto">
+
+    <!-- 상단 배너 광고 영역 (AdMob / AdSense Placeholder) -->
+    <div id="banner-ad-top" class="w-full h-12 bg-gray-200 border border-dashed border-gray-400 rounded-lg flex items-center justify-center text-xs text-gray-500 shrink-0">
+        📢 상단 배너 광고 영역 (320x50)
+    </div>
+
+    <!-- 게임 헤더 (점수 & 다음 냥이) -->
+    <div class="w-full flex justify-between items-center px-4 py-1 shrink-0">
+        <div>
+            <h1 class="text-xl font-black text-amber-800 drop-shadow-sm">🐱 냥냥 머지</h1>
+            <p class="text-xs text-gray-600">길냥이를 '냥신'으로 키워보세요!</p>
+        </div>
+        <div class="flex gap-3">
+            <div class="bg-amber-100 border border-amber-300 px-3 py-1 rounded-xl text-center shadow-inner">
+                <span class="block text-[10px] text-amber-700 font-bold">SCORE</span>
+                <span id="score" class="text-base font-extrabold text-amber-900">0</span>
+            </div>
+            <div class="bg-amber-50 border border-amber-200 px-3 py-1 rounded-xl text-center shadow-inner flex flex-col items-center">
+                <span class="block text-[10px] text-amber-700 font-bold">NEXT</span>
+                <span id="next-icon" class="text-lg">🐈‍⬛</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 캔버스 컨테이너 -->
+    <div id="game-container" class="relative w-full flex-grow flex items-center justify-center my-1">
+        <canvas id="world" width="360" height="480"></canvas>
+
+        <!-- 게임 오버 팝업 레이어 -->
+        <div id="game-over-modal" class="absolute inset-0 bg-black/60 backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center hidden z-20 p-6 text-center">
+            <h2 class="text-3xl font-extrabold text-white mb-2">😿 게임 오버!</h2>
+            <p id="final-score" class="text-lg text-amber-200 mb-6">최종 점수: 0점</p>
+            
+            <div class="flex flex-col gap-3 w-full max-w-xs">
+                <button onclick="reviveGame()" class="bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                    <span>💖 보상형 광고 보고 부활하기</span>
+                </button>
+                <button onclick="restartGame()" class="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition transform active:scale-95">
+                    🔄 다시 시작하기
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 하단 아이템 및 보조 버튼 -->
+    <div class="w-full flex justify-around items-center py-1 gap-2 shrink-0">
+        <button onclick="useShakeItem()" class="flex-1 bg-amber-100 border border-amber-300 hover:bg-amber-200 text-amber-900 text-xs font-bold py-2 px-1 rounded-xl shadow transition flex flex-col items-center">
+            <span>🐟 캣닙 지진</span>
+            <span class="text-[9px] text-amber-600 font-normal">엉킨 고양이 흔들기</span>
+        </button>
+        <button onclick="useClearItem()" class="flex-1 bg-amber-100 border border-amber-300 hover:bg-amber-200 text-amber-900 text-xs font-bold py-2 px-1 rounded-xl shadow transition flex flex-col items-center">
+            <span>🧹 털뭉치 청소</span>
+            <span class="text-[9px] text-amber-600 font-normal">하급 냥이 제거</span>
+        </button>
+    </div>
+
+    <!-- 하단 배너 광고 영역 -->
+    <div id="banner-ad-bottom" class="w-full h-10 bg-gray-200 border border-dashed border-gray-400 rounded-lg flex items-center justify-center text-xs text-gray-500 shrink-0">
+        📢 하단 배너 광고 영역 (320x50)
+    </div>
+
+    <script>
+        // 고양이 단계별 정의 (11단계)
+        const CAT_LEVELS = [
+            { radius: 16, score: 1, emoji: '🐈‍⬛', name: '먼지 냥이' },
+            { radius: 22, score: 3, emoji: '🐾', name: '아기 냥이' },
+            { radius: 28, score: 6, emoji: '🍞', name: '식빵 냥이' },
+            { radius: 35, score: 10, emoji: '📦', name: '상자 냥이' },
+            { radius: 43, score: 15, emoji: '🐱', name: '식빵 뚱냥이' },
+            { radius: 52, score: 21, emoji: '🍩', name: '마카롱 냥이' },
+            { radius: 62, score: 28, emoji: '🧀', name: '치즈 뚱냥이' },
+            { radius: 73, score: 36, emoji: '😸', name: '대왕 뚱냥이' },
+            { radius: 85, score: 45, emoji: '✨', name: '별빛 냥이' },
+            { radius: 98, score: 55, emoji: '🪐', name: '우주 냥이' },
+            { radius: 112, score: 100, emoji: '👑', name: '냥신' }
+        ];
+
+        let score = 0;
+        let isDropping = false;
+        let currentLevel = 0;
+        let nextLevel = Math.floor(Math.random() * 3);
+        let gameOver = false;
+        let dropX = 180;
+
+        // Matter.js 모듈 설정
+        const { Engine, Render, Runner, Bodies, Composite, Events, Body, Vector } = Matter;
+
+        const engine = Engine.create();
+        const world = engine.world;
+
+        const canvas = document.getElementById('world');
+        const canvasWidth = 360;
+        const canvasHeight = 480;
+
+        // 벽 및 바닥 생성 (통 구조)
+        const wallOptions = { isStatic: true, render: { visible: false } };
+        const ground = Bodies.rectangle(canvasWidth / 2, canvasHeight - 10, canvasWidth, 20, wallOptions);
+        const leftWall = Bodies.rectangle(10, canvasHeight / 2, 20, canvasHeight, wallOptions);
+        const rightWall = Bodies.rectangle(canvasWidth - 10, canvasHeight / 2, 20, canvasHeight, wallOptions);
+        Composite.add(world, [ground, leftWall, rightWall]);
+
+        // 물리 엔진 실행
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // Web Audio API 사운드 합성기
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(freq, type = 'sine', duration = 0.1) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // 입력 제어 (터치 및 마우스)
+        const container = document.getElementById('game-container');
+        
+        function handleMove(clientX) {
+            const rect = canvas.getBoundingClientRect();
+            let x = clientX - rect.left;
+            dropX = Math.max(30, Math.min(canvasWidth - 30, x));
+        }
+
+        container.addEventListener('mousemove', (e) => handleMove(e.clientX));
+        container.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) handleMove(e.touches[0].clientX);
+            e.preventDefault();
+        }, { passive: false });
+
+        container.addEventListener('click', () => dropCat());
+        container.addEventListener('touchend', (e) => {
+            dropCat();
+            e.preventDefault();
+        }, { passive: false });
+
+        function updateNextCat() {
+            currentLevel = nextLevel;
+            nextLevel = Math.floor(Math.random() * 4); // 0~3단계 중 랜덤
+            document.getElementById('next-icon').innerText = CAT_LEVELS[nextLevel].emoji;
+        }
+        updateNextCat();
+
+        function dropCat() {
+            if (isDropping || gameOver) return;
+            isDropping = true;
+
+            playSound(400, 'triangle', 0.08);
+
+            const catInfo = CAT_LEVELS[currentLevel];
+            const cat = Bodies.circle(dropX, 50, catInfo.radius, {
+                restitution: 0.3,
+                friction: 0.1,
+                render: { visible: false },
+                label: 'cat_' + currentLevel
+            });
+
+            cat.catLevel = currentLevel;
+            Composite.add(world, cat);
+
+            setTimeout(() => {
+                isDropping = false;
+                updateNextCat();
+            }, 400);
+        }
+
+        // 충돌 및 머지(합체) 이벤트 처리
+        Events.on(engine, 'collisionStart', (event) => {
+            const pairs = event.pairs;
+            for (let i = 0; i < pairs.length; i++) {
+                constbodyA = pairs[i].bodyA;
+                constbodyB = pairs[i].bodyB;
+
+                if (bodyA.catLevel !== undefined && bodyA.catLevel === bodyB.catLevel) {
+                    const level = bodyA.catLevel;
+                    if (level < CAT_LEVELS.length - 1) {
+                        // 이미 처린된 객체 중복 방지
+                        if (bodyA.isRemoved || bodyB.isRemoved) continue;
+                        bodyA.isRemoved = true;
+                        bodyB.isRemoved = true;
+
+                        const midX = (bodyA.position.x + bodyB.position.x) / 2;
+                        const midY = (bodyA.position.y + bodyB.position.y) / 2;
+
+                        Composite.remove(world, [bodyA, bodyB]);
+
+                        const nextLvl = level + 1;
+                        const newCat = Bodies.circle(midX, midY, CAT_LEVELS[nextLvl].radius, {
+                            restitution: 0.3,
+                            friction: 0.1,
+                            render: { visible: false },
+                            label: 'cat_' + nextLvl
+                        });
+                        newCat.catLevel = nextLvl;
+                        Composite.add(world, newCat);
+
+                        score += CAT_LEVELS[level].score * 2;
+                        document.getElementById('score').innerText = score;
+
+                        playSound(250 + nextLvl * 60, 'sine', 0.15);
+                    }
+                }
+            }
+        });
+
+        // 게임오버 체크 (데드라인 감지)
+        Events.on(engine, 'afterUpdate', () => {
+            if (gameOver) return;
+            const bodies = Composite.allBodies(world);
+            for (let i = 0; i < bodies.length; i++) {
+                const b = bodies[i];
+                if (b.catLevel !== undefined && !b.isRemoved && b.position.y < 70 && b.velocity.y < 0.5) {
+                    // 상단 경계선 침범 시 게임오버 트리거
+                    triggerGameOver();
+                    break;
+                }
+            }
+        });
+
+        function triggerGameOver() {
+            gameOver = true;
+            document.getElementById('final-score').innerText = `최종 점수: ${score}점`;
+            document.getElementById('game-over-modal').classList.remove('hidden');
+        }
+
+        function restartGame() {
+            const allBodies = Composite.allBodies(world);
+            allBodies.forEach(b => {
+                if (b.catLevel !== undefined) Composite.remove(world, b);
+            });
+            score = 0;
+            document.getElementById('score').innerText = score;
+            gameOver = false;
+            document.getElementById('game-over-modal').classList.add('hidden');
+        }
+
+        function reviveGame() {
+            // 보상형 광고 시청 시연 후 상단 고양이들 청소 및 부활
+            alert("광고 시청 완료! 고양이들을 정리하고 부활합니다. 💖");
+            const allBodies = Composite.allBodies(world);
+            allBodies.forEach(b => {
+                if (b.catLevel !== undefined && b.position.y < 150) {
+                    Composite.remove(world, b);
+                }
+            });
+            gameOver = false;
+            document.getElementById('game-over-modal').classList.add('hidden');
+        }
+
+        function useShakeItem() {
+            if (gameOver) return;
+            const allBodies = Composite.allBodies(world);
+            allBodies.forEach(b => {
+                if (b.catLevel !== undefined) {
+                    Body.setVelocity(b, { x: (Math.random() - 0.5) * 15, y: -10 });
+                }
+            });
+            playSound(150, 'sawtooth', 0.2);
+        }
+
+        function useClearItem() {
+            if (gameOver) return;
+            const allBodies = Composite.allBodies(world);
+            allBodies.forEach(b => {
+                if (b.catLevel !== undefined && b.catLevel <= 2) {
+                    Composite.remove(world, b);
+                    score += 5;
+                }
+            });
+            document.getElementById('score').innerText = score;
+            playSound(600, 'sine', 0.1);
+        }
+
+        // 커스텀 렌더링 루프 (캔버스에 고양이 이모지와 가이드라인 그리기)
+        const ctx = canvas.getContext('2d');
+        function renderLoop() {
+            ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+            // 상단 데드라인 표시
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(15, 70);
+            ctx.lineTo(canvasWidth - 15, 70);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 드롭 조준선 표시
+            if (!gameOver && !isDropping) {
+                ctx.strokeStyle = 'rgba(217, 119, 6, 0.5)';
+                ctx.beginPath();
+                ctx.moveTo(dropX, 50);
+                ctx.lineTo(dropX, canvasHeight - 20);
+                ctx.stroke();
+
+                // 현재 낙하할 고양이 미리보기 아이콘
+                const currentCat = CAT_LEVELS[currentLevel];
+                ctx.font = `${currentCat.radius * 1.4}px sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(currentCat.emoji, dropX, 45);
+            }
+
+            // 모든 고양이 바디 렌더링
+            const bodies = Composite.allBodies(world);
+            bodies.forEach(b => {
+                if (b.catLevel !== undefined) {
+                    const catInfo = CAT_LEVELS[b.catLevel];
+                    ctx.save();
+                    ctx.translate(b.position.x, b.position.y);
+                    ctx.rotate(b.angle);
+
+                    // 원형 배경
+                    ctx.beginPath();
+                    ctx.arc(0, 0, catInfo.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#fffbeb';
+                    ctx.fill();
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#d97706';
+                    ctx.stroke();
+
+                    // 이모지 출력
+                    ctx.font = `${catInfo.radius * 1.3}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(catInfo.emoji, 0, 2);
+
+                    ctx.restore();
+                }
+            });
+
+            requestAnimationFrame(renderLoop);
+        }
+        renderLoop();
+    </script>
+</body>
+</html>
